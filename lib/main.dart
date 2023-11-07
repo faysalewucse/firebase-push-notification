@@ -2,15 +2,18 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_push_notification/Utils/native_utils.dart';
 import 'package:firebase_push_notification/audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:get/get_navigation/get_navigation.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:http/http.dart' as http;
 
+import 'appLifeCycleObserver.dart';
+
 final audioPlayer = AudioPlayer();
-bool sound = false;
 double mobileCurrentVol = 0.0;
 
 @pragma('vm:entry-point')
@@ -18,30 +21,29 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print('---->> ${message.notification!.title.toString()}');
 
-  await audioPlayer.play(AssetSource('preview.mp3'));
+  // await audioPlayer.play(AssetSource('preview.mp3'));
 
-  // VolumeController().setVolume(0.50);
+  var audioChannel = const MethodChannel("rootX/playAudio");
+  audioChannel.invokeMethod('playAudio');
 
-  double _volume = -1;
-  sound = false;
 
-  VolumeController().listener((volume) {
-    print("Current Volume :$volume");
-    try {
-      if (_volume > -1 && _volume != volume) {
-        _volume = double.parse(volume.toString());
-        audioPlayer.stop();
-      } else {
-        _volume = volume;
-      }
-    } catch (error) {
-      print("Volume parse error");
-    }
-  });
+  // double _volume = -1;
+  //
+  // VolumeController().listener((volume) {
+  //   print("Current Volume :$volume");
+  //   try {
+  //     if (_volume > -1 && _volume != volume) {
+  //       _volume = double.parse(volume.toString());
+  //       audioPlayer.stop();
+  //     } else {
+  //       _volume = volume;
+  //     }
+  //   } catch (error) {
+  //     print("Volume parse error");
+  //   }
+  // });
 
-  VolumeController().setVolume(0.9);
-  print(
-      '================>>>  ${VolumeController().getVolume()}  <<<====================');
+  VolumeController().setVolume(0.9, showSystemUI: false);
 
   AwesomeNotifications().createNotification(
     content: NotificationContent(
@@ -76,16 +78,16 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 @pragma('vm:entry-point')
 Future<void> onActionReceivedMethod(ReceivedAction event) async {
   if (event.buttonKeyPressed == "REJECT") {
-    sound = true;
-    audioPlayer.stop();
+    var audioChannel = const MethodChannel("rootX/playAudio");
+    audioChannel.invokeMethod('stopAudio');
     print("second set for reject");
   } else if (event.buttonKeyPressed == "ACCEPT") {
-    VolumeController().setVolume(0.7);
+    VolumeController().setVolume(0.7,showSystemUI: false);
     final response = await http.get(Uri.parse('https://reqres.in/api/users/2'));
 
     if (response.statusCode == 200) {
       debugPrint("==========response: ${response.body}", wrapWidth: 1024);
-      VolumeController().setVolume(mobileCurrentVol);
+      VolumeController().setVolume(mobileCurrentVol,showSystemUI: false);
     } else {
       // If the server did not return a 200 OK response, throw an exception
       throw Exception('Failed to load data');
@@ -110,7 +112,7 @@ void main() async {
       .getToken()
       .then((value) => print('------>> device token: ${value.toString()}'));
   AwesomeNotifications().initialize(
-      // set the icon to null if you want to use the default app icon
+    // set the icon to null if you want to use the default app icon
       null,
       [
         NotificationChannel(
@@ -129,6 +131,8 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   AwesomeNotifications()
       .setListeners(onActionReceivedMethod: onActionReceivedMethod);
+  final appLifeCycleObserver = AppLifecycleObserver();
+  WidgetsBinding.instance.addObserver(appLifeCycleObserver);
   runApp(const MyApp());
 }
 
@@ -164,10 +168,6 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     // TODO: implement initState
-    print('================>> called from push notification screen n1');
-
-    audioPlayer.stop();
-    print('================>> called from push notification screen');
 
     super.initState();
 
@@ -205,13 +205,25 @@ class _MyHomePageState extends State<MyHomePage> {
         title: const Text("Push Notification"),
       ),
       body: Center(
-        child: GestureDetector(
-          onTap: () => AudioService().stopSound(),
-          child: Icon(
-            Icons.notifications_active,
-            size: 50,
-            color: Theme.of(context).colorScheme.inversePrimary,
-          ),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () => startAudio(),
+              child: Icon(
+                Icons.notifications_active,
+                size: 50,
+                color: Theme.of(context).colorScheme.inversePrimary,
+              ),
+            ),
+            GestureDetector(
+              onTap: () => stopAudio(),
+              child: const Icon(
+                Icons.notifications_active,
+                size: 50,
+                color: Colors.redAccent,
+              ),
+            ),
+          ],
         ),
       ),
     );
